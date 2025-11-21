@@ -14,13 +14,51 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  name      String?
-  image     String?
-  googleId  String?  @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String       @id @default(uuid())
+  email       String       @unique
+  name        String?
+  image       String?
+  displayName String?
+  phoneNumber String?
+  googleId    String?      @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  creatorInfo CreatorInfo?
+  bankingInfo BankingInfo?
 
   @@map("users")
+}
+
+enum photographyType {
+  Marathon
+  Wildlife
+  Motorsports
+}
+
+model CreatorInfo {
+  id              String           @id @default(uuid())
+  userId          String           @unique
+  bio             String?
+  photographyType photographyType?
+  location        String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("creator_infos")
+}
+
+model BankingInfo {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  bankName      String
+  accountNumber String
+  holderName    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("banking_infos")
 }

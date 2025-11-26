@@ -20,7 +20,7 @@ export class AuthService {
   }
 
   async validateGoogleUser(googleAuthDto: GoogleAuthDto): Promise<User> {
-    const { idToken } = googleAuthDto;
+    const { idToken, type } = googleAuthDto;
 
     const ticket = await this.googleClient.verifyIdToken({
       idToken: idToken,
@@ -60,6 +60,7 @@ export class AuthService {
           name,
           image: picture,
           googleId,
+          type,
         },
       });
     }

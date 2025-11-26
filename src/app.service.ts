@@ -30,6 +30,7 @@ export class AppService {
       select: {
         id: true,
         email: true,
+        name: true,
         displayName: true,
         creatorInfo: {
           select: {

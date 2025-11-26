@@ -13,6 +13,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum UserType {
+  Creator
+  Customer
+}
+
 model User {
   id          String       @id @default(uuid())
   email       String       @unique
@@ -20,11 +25,14 @@ model User {
   image       String?
   displayName String?
   phoneNumber String?
+  type        UserType     @default(Customer)
   googleId    String?      @unique
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   creatorInfo CreatorInfo?
   bankingInfo BankingInfo?
+  images      Image[]
+  events      Event[]
 
   @@map("users")
 }
@@ -49,6 +57,22 @@ model CreatorInfo {
   @@map("creator_infos")
 }
 
+model Event {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  date         DateTime
+  thumbnailUrl String?
+  location     String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdBy    String
+  creator      User     @relation(fields: [createdBy], references: [id])
+  images       Image[]
+
+  @@map("events")
+}
+
 model BankingInfo {
   id            String   @id @default(uuid())
   userId        String   @unique
@@ -61,4 +85,20 @@ model BankingInfo {
   user User @relation(fields: [userId], references: [id])
 
   @@map("banking_infos")
+}
+
+model Image {
+  id          String                @id @default(uuid())
+  url         String
+  description String?
+  embedding   Unsupported("vector")
+  creatorId   String
+  eventId     String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  event   Event? @relation(fields: [eventId], references: [id])
+  creator User   @relation(fields: [creatorId], references: [id])
+
+  @@map("images")
 }

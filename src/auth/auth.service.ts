@@ -1,18 +1,43 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { GoogleAuthDto } from './dto/google-auth.dto';
 import { User } from '@prisma/client';
-
+import { ConfigService } from '@nestjs/config';
+import { OAuth2Client } from 'google-auth-library';
 @Injectable()
 export class AuthService {
+  private googleClient: OAuth2Client;
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    this.googleClient = new OAuth2Client(
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+    );
+  }
 
   async validateGoogleUser(googleAuthDto: GoogleAuthDto): Promise<User> {
-    const { email, name, image, googleId } = googleAuthDto;
+    const { idToken } = googleAuthDto;
+
+    const ticket = await this.googleClient.verifyIdToken({
+      idToken: idToken,
+      audience: this.configService.get<string>('GOOGLE_CLIENT_ID'),
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload) {
+      throw new Error('Invalid Google ID token');
+    }
+
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email) {
+      throw new UnauthorizedException('Email not provided by Google');
+    }
 
     // Check if user exists
     let user = await this.prisma.user.findUnique({
@@ -24,7 +49,7 @@ export class AuthService {
       if (!user.googleId && googleId) {
         user = await this.prisma.user.update({
           where: { email },
-          data: { googleId, name, image },
+          data: { googleId, name, image: picture },
         });
       }
     } else {
@@ -33,7 +58,7 @@ export class AuthService {
         data: {
           email,
           name,
-          image,
+          image: picture,
           googleId,
         },
       });
@@ -53,6 +78,7 @@ export class AuthService {
         image: user.image,
         displayName: user.displayName,
         phoneNumber: user.phoneNumber,
+        type: user.type,
       },
     };
   }

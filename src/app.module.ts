@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { CreatorModule } from './creator/creator.module';
 import { CustomerModule } from './customer/customer.module';
+import { EventModule } from './event/event.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CustomerModule } from './customer/customer.module';
     CloudinaryModule,
     CreatorModule,
     CustomerModule,
+    EventModule,
   ],
   controllers: [AppController],
   providers: [AppService],

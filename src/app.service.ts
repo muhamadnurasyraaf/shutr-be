@@ -47,4 +47,62 @@ export class AppService {
       topPhotographers,
     };
   }
+
+  async search(query: string) {
+    if (!query || query.trim() === '') {
+      return {
+        events: [],
+        photographers: [],
+      };
+    }
+
+    const searchTerm = query.trim();
+
+    const [events, photographers] = await Promise.all([
+      this.prisma.event.findMany({
+        where: {
+          OR: [
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+            { description: { contains: searchTerm, mode: 'insensitive' } },
+            { location: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          date: true,
+          thumbnailUrl: true,
+          location: true,
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+      }),
+      this.prisma.user.findMany({
+        where: {
+          type: 'Creator',
+          OR: [
+            { name: { contains: searchTerm, mode: 'insensitive' } },
+            { displayName: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          displayName: true,
+          creatorInfo: {
+            select: {
+              location: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      events,
+      photographers,
+    };
+  }
 }

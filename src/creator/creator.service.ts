@@ -493,7 +493,7 @@ export class CreatorService {
 
       const prompt = `Analyze this image and extract the following information if visible:
 1. BIB NUMBER: Look for race bib numbers typically worn by runners/participants in marathons or running events. These are usually large numbers on the chest or back.
-2. PLATE NUMBER: Look for vehicle license plate numbers or racing car numbers.
+2. PLATE NUMBER: Look for the most front vehicle license plate numbers or racing car numbers.
 
 Respond ONLY in this exact JSON format, nothing else:
 {"bibNumber": "extracted_number_or_null", "plateNumber": "extracted_number_or_null"}
@@ -503,7 +503,7 @@ Only extract clear, readable numbers. Do not guess.`;
 
       const response = await firstValueFrom(
         this.http.post<GeminiResponse>(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
           {
             contents: [
               {
@@ -520,7 +520,7 @@ Only extract clear, readable numbers. Do not guess.`;
             ],
             generationConfig: {
               temperature: 0.1,
-              maxOutputTokens: 100,
+              maxOutputTokens: 1000,
             },
           },
           {
@@ -530,6 +530,8 @@ Only extract clear, readable numbers. Do not guess.`;
           },
         ),
       );
+
+      console.log(`RESPONSE : ${JSON.stringify(response.data, null, 2)}`);
 
       const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (text) {

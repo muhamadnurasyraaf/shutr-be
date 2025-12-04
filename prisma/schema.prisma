@@ -92,7 +92,9 @@ model Image {
   id          String                @id @default(uuid())
   url         String
   description String?
-  embedding   Unsupported("vector") //face embedding
+  embedding   Unsupported("vector") //face embedding : current = similarity
+  bibNumber   String?
+  plateNumber String?
   creatorId   String
   eventId     String?
   createdAt   DateTime              @default(now())
@@ -111,6 +113,7 @@ model Variant {
 
   imageId         String
   image           Image            @relation(fields: [imageId], references: [id])
+  url             String?
   name            String
   description     String?
   price           Decimal          @db.Decimal(10, 2)

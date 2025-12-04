@@ -23,6 +23,28 @@ interface JinaEmbeddingResponse {
   };
 }
 
+interface GeminiResponse {
+  candidates: Array<{
+    content: {
+      parts: Array<{
+        text: string;
+      }>;
+    };
+  }>;
+}
+
+interface ExtractedNumbers {
+  bibNumber: string | null;
+  plateNumber: string | null;
+}
+
+interface VariantInput {
+  name: string;
+  description?: string;
+  price: number;
+  file: Express.Multer.File;
+}
+
 @Injectable()
 export class CreatorService {
   constructor(
@@ -38,6 +60,99 @@ export class CreatorService {
         creatorInfo: true,
         bankingInfo: true,
       },
+    });
+  }
+
+  async getImageWithVariants(imageId: string, creatorId: string) {
+    const image = await this.prisma.image.findFirst({
+      where: {
+        id: imageId,
+        creatorId: creatorId,
+      },
+      select: {
+        id: true,
+        url: true,
+        description: true,
+        bibNumber: true,
+        plateNumber: true,
+        creatorId: true,
+        eventId: true,
+        createdAt: true,
+        updatedAt: true,
+        event: {
+          select: {
+            id: true,
+            name: true,
+            date: true,
+            location: true,
+          },
+        },
+        variants: {
+          select: {
+            id: true,
+            url: true,
+            name: true,
+            description: true,
+            price: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+
+    return image;
+  }
+
+  async updateImageVariant(
+    variantId: string,
+    creatorId: string,
+    data: { name?: string; description?: string; price?: number },
+  ) {
+    // Verify the variant belongs to an image owned by the creator
+    const variant = await this.prisma.variant.findFirst({
+      where: {
+        id: variantId,
+        image: {
+          creatorId: creatorId,
+        },
+      },
+    });
+
+    if (!variant) {
+      throw new Error('Variant not found or unauthorized');
+    }
+
+    return this.prisma.variant.update({
+      where: { id: variantId },
+      data: {
+        name: data.name,
+        description: data.description,
+        price: data.price,
+      },
+    });
+  }
+
+  async deleteVariant(variantId: string, creatorId: string) {
+    // Verify the variant belongs to an image owned by the creator
+    const variant = await this.prisma.variant.findFirst({
+      where: {
+        id: variantId,
+        image: {
+          creatorId: creatorId,
+        },
+      },
+    });
+
+    if (!variant) {
+      throw new Error('Variant not found or unauthorized');
+    }
+
+    return this.prisma.variant.delete({
+      where: { id: variantId },
     });
   }
 
@@ -366,6 +481,85 @@ export class CreatorService {
     };
   }
 
+  /**
+   * Extract bib number and plate number from image using Gemini Vision API
+   */
+  private async extractNumbersFromImage(
+    imageUrl: string,
+    photographyType?: photographyType | null,
+  ): Promise<ExtractedNumbers> {
+    try {
+      console.log('Extracting numbers from image using Gemini...');
+
+      const prompt = `Analyze this image and extract the following information if visible:
+1. BIB NUMBER: Look for race bib numbers typically worn by runners/participants in marathons or running events. These are usually large numbers on the chest or back.
+2. PLATE NUMBER: Look for vehicle license plate numbers or racing car numbers.
+
+Respond ONLY in this exact JSON format, nothing else:
+{"bibNumber": "extracted_number_or_null", "plateNumber": "extracted_number_or_null"}
+
+If a number type is not found or not applicable, use null.
+Only extract clear, readable numbers. Do not guess.`;
+
+      const response = await firstValueFrom(
+        this.http.post<GeminiResponse>(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+          {
+            contents: [
+              {
+                parts: [
+                  { text: prompt },
+                  {
+                    inline_data: {
+                      mime_type: 'image/jpeg',
+                      data: await this.getBase64FromUrl(imageUrl),
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 100,
+            },
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+
+      const text = response.data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        // Clean the response and parse JSON
+        const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
+        const parsed = JSON.parse(cleanedText);
+        console.log('Extracted numbers:', parsed);
+        return {
+          bibNumber: parsed.bibNumber || null,
+          plateNumber: parsed.plateNumber || null,
+        };
+      }
+
+      return { bibNumber: null, plateNumber: null };
+    } catch (error) {
+      console.error('Error extracting numbers from image:', error);
+      return { bibNumber: null, plateNumber: null };
+    }
+  }
+
+  /**
+   * Convert image URL to base64
+   */
+  private async getBase64FromUrl(url: string): Promise<string> {
+    const response = await firstValueFrom(
+      this.http.get(url, { responseType: 'arraybuffer' }),
+    );
+    return Buffer.from(response.data).toString('base64');
+  }
+
   async uploadContent(
     file: Express.Multer.File,
     creatorId: string,
@@ -373,8 +567,27 @@ export class CreatorService {
     description?: string,
   ) {
     try {
+      // Verify creator exists before uploading
+      const creator = await this.prisma.user.findUnique({
+        where: { id: creatorId },
+        include: { creatorInfo: true },
+      });
+
+      if (!creator) {
+        throw new Error(`Creator with ID '${creatorId}' not found`);
+      }
+
       console.log('Uploading to Cloudinary...');
       const cloudinaryUrl = await this.cloudinary.uploadImageReturnUrl(file);
+
+      // Get creator's photography type for context
+      const creatorPhotographyType = creator?.creatorInfo?.photographyType;
+
+      // Extract bib/plate numbers using Gemini
+      const extractedNumbers = await this.extractNumbersFromImage(
+        cloudinaryUrl,
+        creatorPhotographyType,
+      );
 
       console.log('Generating embedding...');
 
@@ -410,6 +623,8 @@ export class CreatorService {
         url,
         description,
         embedding,
+        "bibNumber",
+        "plateNumber",
         "creatorId",
         "eventId",
         "updatedAt"
@@ -421,13 +636,17 @@ export class CreatorService {
         $3::vector,
         $4,
         $5,
+        $6,
+        $7,
         NOW()
       )
-      RETURNING id, url, description, "creatorId", "eventId", "createdAt", "updatedAt";
+      RETURNING id, url, description, "bibNumber", "plateNumber", "creatorId", "eventId", "createdAt", "updatedAt";
     `,
         cloudinaryUrl,
         description || null,
         vectorStr,
+        extractedNumbers.bibNumber,
+        extractedNumbers.plateNumber,
         creatorId,
         eventId || null,
       );
@@ -436,6 +655,67 @@ export class CreatorService {
       return created[0];
     } catch (error) {
       console.error('Error uploading content:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload content with variants
+   */
+  async uploadContentWithVariants(
+    mainFile: Express.Multer.File,
+    creatorId: string,
+    eventId?: string,
+    description?: string,
+    variants?: VariantInput[],
+  ) {
+    try {
+      // First upload the main image
+      const mainImage = await this.uploadContent(
+        mainFile,
+        creatorId,
+        eventId,
+        description,
+      );
+
+      // If no variants, return just the main image
+      if (!variants || variants.length === 0) {
+        return {
+          ...mainImage,
+          variants: [],
+        };
+      }
+
+      // Upload variants
+      const createdVariants: Awaited<
+        ReturnType<typeof this.prisma.variant.create>
+      >[] = [];
+      for (const variant of variants) {
+        // Upload variant image to Cloudinary
+        const variantUrl = await this.cloudinary.uploadImageReturnUrl(
+          variant.file,
+        );
+
+        // Create variant record
+        const createdVariant = await this.prisma.variant.create({
+          data: {
+            imageId: mainImage.id,
+            url: variantUrl,
+            name: variant.name,
+            description: variant.description || null,
+            price: variant.price,
+          },
+        });
+
+        createdVariants.push(createdVariant);
+      }
+
+      return {
+        ...mainImage,
+        variants: createdVariants,
+      };
+    } catch (error) {
+      console.error('Error uploading content with variants:', error);
       throw error;
     }
   }

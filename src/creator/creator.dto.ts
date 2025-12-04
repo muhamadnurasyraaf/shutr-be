@@ -27,9 +27,29 @@ export const UpdateBankingInfoSchema = z.object({
   holderName: z.string().min(1, 'Account holder name is required'),
 });
 
+// Get Photographers (for top photographers page)
+export const GetPhotographersSchema = z.object({
+  photographyType: z
+    .enum(['Marathon', 'Wildlife', 'Motorsports'])
+    .optional()
+    .nullable(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(9),
+});
+
+// Get Photographer Public Profile
+export const GetPhotographerProfileSchema = z.object({
+  id: z.string(),
+  eventId: z.string().optional().nullable(),
+});
+
 export type GetCreatorProfileDto = z.infer<typeof GetCreatorProfileSchema>;
 export type UpdatePersonalInfoDto = z.infer<typeof UpdatePersonalInfoSchema>;
 export type UpdateProfessionalInfoDto = z.infer<
   typeof UpdateProfessionalInfoSchema
 >;
 export type UpdateBankingInfoDto = z.infer<typeof UpdateBankingInfoSchema>;
+export type GetPhotographersDto = z.infer<typeof GetPhotographersSchema>;
+export type GetPhotographerProfileDto = z.infer<
+  typeof GetPhotographerProfileSchema
+>;

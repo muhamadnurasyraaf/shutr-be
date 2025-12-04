@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Put,
   Query,
@@ -20,6 +21,9 @@ import {
   UpdateProfessionalInfoSchema,
   type UpdateBankingInfoDto,
   UpdateBankingInfoSchema,
+  type GetPhotographersDto,
+  GetPhotographersSchema,
+  type GetPhotographerProfileDto,
 } from './creator.dto';
 import { CreatorService } from './creator.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -32,6 +36,29 @@ export class CreatorController {
   @UsePipes(new ZodValidationPipe(GetCreatorProfileSchema))
   async getCreatorProfile(@Query() query: GetCreatorProfileDto) {
     return this.creatorService.getCreatorProfile(query.userId);
+  }
+
+  @Get('photographers')
+  async getPhotographers(@Query() query: GetPhotographersDto) {
+    return this.creatorService.getPhotographers(query);
+  }
+
+  @Get('photographer/:id')
+  async getPhotographerPublicProfile(
+    @Param('id') id: string,
+    @Query('eventId') eventId?: string,
+  ) {
+    if (!id) {
+      throw new BadRequestException('Photographer ID is required');
+    }
+    const result = await this.creatorService.getPhotographerPublicProfile(
+      id,
+      eventId,
+    );
+    if (!result) {
+      throw new BadRequestException('Photographer not found');
+    }
+    return result;
   }
 
   @Post('upload')

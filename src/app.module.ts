@@ -8,6 +8,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { CreatorModule } from './creator/creator.module';
 import { CustomerModule } from './customer/customer.module';
 import { EventModule } from './event/event.module';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EventModule } from './event/event.module';
     CreatorModule,
     CustomerModule,
     EventModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

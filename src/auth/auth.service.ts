@@ -5,6 +5,8 @@ import { GoogleAuthDto } from './dto/google-auth.dto';
 import { User } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
+import { SearchService } from '../search/search.service';
+
 @Injectable()
 export class AuthService {
   private googleClient: OAuth2Client;
@@ -13,6 +15,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private searchService: SearchService,
   ) {
     this.googleClient = new OAuth2Client(
       this.configService.get<string>('GOOGLE_CLIENT_ID'),
@@ -63,6 +66,22 @@ export class AuthService {
           type,
         },
       });
+
+      // Index new creator in Typesense
+      if (type === 'Creator') {
+        await this.searchService.indexCreator({
+          id: user.id,
+          name: user.name || undefined,
+          displayName: user.displayName || undefined,
+          email: user.email,
+          photographyType: undefined,
+          location: undefined,
+          bio: undefined,
+          eventsCount: 0,
+          imagesCount: 0,
+          createdAt: user.createdAt.getTime(),
+        });
+      }
     }
 
     return user;

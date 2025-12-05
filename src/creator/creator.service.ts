@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { SearchService } from 'src/search/search.service';
 
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -51,6 +52,7 @@ export class CreatorService {
     private prisma: PrismaService,
     private cloudinary: CloudinaryService,
     private http: HttpService,
+    private searchService: SearchService,
   ) {}
 
   async getCreatorProfile(userId: string) {
@@ -71,7 +73,7 @@ export class CreatorService {
       },
       select: {
         id: true,
-        url: true,
+        publicId: true,
         description: true,
         bibNumber: true,
         plateNumber: true,
@@ -90,7 +92,7 @@ export class CreatorService {
         variants: {
           select: {
             id: true,
-            url: true,
+            publicId: true,
             name: true,
             description: true,
             price: true,
@@ -104,7 +106,17 @@ export class CreatorService {
       },
     });
 
-    return image;
+    if (!image) return null;
+
+    // Transform to include signed URLs for API response
+    return {
+      ...image,
+      url: this.cloudinary.getSignedUrl(image.publicId),
+      variants: image.variants.map((variant) => ({
+        ...variant,
+        url: this.cloudinary.getSignedUrl(variant.publicId),
+      })),
+    };
   }
 
   async updateImageVariant(
@@ -285,7 +297,7 @@ export class CreatorService {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        url: true,
+        publicId: true,
         description: true,
         createdAt: true,
         event: {
@@ -328,7 +340,7 @@ export class CreatorService {
       }
       grouped[eventKey].images.push({
         id: image.id,
-        url: image.url,
+        url: this.cloudinary.getSignedUrl(image.publicId),
         description: image.description,
         createdAt: image.createdAt,
       });
@@ -396,7 +408,7 @@ export class CreatorService {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        url: true,
+        publicId: true,
         description: true,
         createdAt: true,
         event: {
@@ -439,7 +451,7 @@ export class CreatorService {
       }
       grouped[eventKey].images.push({
         id: image.id,
-        url: image.url,
+        url: this.cloudinary.getSignedUrl(image.publicId),
         description: image.description,
         createdAt: image.createdAt,
       });
@@ -486,7 +498,6 @@ export class CreatorService {
    */
   private async extractNumbersFromImage(
     imageUrl: string,
-    photographyType?: photographyType | null,
   ): Promise<ExtractedNumbers> {
     try {
       console.log('Extracting numbers from image using Gemini...');
@@ -580,16 +591,12 @@ Only extract clear, readable numbers. Do not guess.`;
       }
 
       console.log('Uploading to Cloudinary...');
-      const cloudinaryUrl = await this.cloudinary.uploadImageReturnUrl(file);
+      const uploadResult = await this.cloudinary.uploadImage(file);
+      const publicId = uploadResult.public_id;
+      const tempUrl = uploadResult.secure_url;
 
-      // Get creator's photography type for context
-      const creatorPhotographyType = creator?.creatorInfo?.photographyType;
-
-      // Extract bib/plate numbers using Gemini
-      const extractedNumbers = await this.extractNumbersFromImage(
-        cloudinaryUrl,
-        creatorPhotographyType,
-      );
+      // Extract bib/plate numbers using Gemini (use temp URL for analysis)
+      const extractedNumbers = await this.extractNumbersFromImage(tempUrl);
 
       console.log('Generating embedding...');
 
@@ -600,7 +607,7 @@ Only extract clear, readable numbers. Do not guess.`;
             model: 'jina-clip-v2',
             input: [
               {
-                image: cloudinaryUrl,
+                image: tempUrl,
               },
             ],
           },
@@ -622,7 +629,8 @@ Only extract clear, readable numbers. Do not guess.`;
         `
       INSERT INTO images (
         id,
-        url,
+        "publicId",
+        provider,
         description,
         embedding,
         "bibNumber",
@@ -634,6 +642,7 @@ Only extract clear, readable numbers. Do not guess.`;
       VALUES (
         gen_random_uuid(),
         $1,
+        'cloudinary',
         $2,
         $3::vector,
         $4,
@@ -642,9 +651,9 @@ Only extract clear, readable numbers. Do not guess.`;
         $7,
         NOW()
       )
-      RETURNING id, url, description, "bibNumber", "plateNumber", "creatorId", "eventId", "createdAt", "updatedAt";
+      RETURNING id, "publicId", description, "bibNumber", "plateNumber", "creatorId", "eventId", "createdAt", "updatedAt";
     `,
-        cloudinaryUrl,
+        publicId,
         description || null,
         vectorStr,
         extractedNumbers.bibNumber,
@@ -654,7 +663,47 @@ Only extract clear, readable numbers. Do not guess.`;
       );
 
       console.log('Upload complete!');
-      return created[0];
+
+      // Get event name for indexing
+      let eventName: string | undefined;
+      if (eventId) {
+        const event = await this.prisma.event.findUnique({
+          where: { id: eventId },
+          select: { name: true },
+        });
+        eventName = event?.name;
+      }
+
+      // Index in Typesense
+      await this.searchService.indexImage({
+        id: created[0].id,
+        publicId: publicId,
+        description: description || undefined,
+        bibNumber: extractedNumbers.bibNumber || undefined,
+        plateNumber: extractedNumbers.plateNumber || undefined,
+        eventId: eventId || undefined,
+        eventName: eventName,
+        creatorId: creatorId,
+        creatorName: creator.displayName || creator.name || undefined,
+        createdAt: new Date(created[0].createdAt).getTime(),
+      });
+
+      // Update event image count in Typesense
+      if (eventId) {
+        const imageCount = await this.prisma.image.count({
+          where: { eventId },
+        });
+        await this.searchService.updateEvent({
+          id: eventId,
+          imageCount,
+        });
+      }
+
+      // Return with signed URL for API response consistency
+      return {
+        ...created[0],
+        url: this.cloudinary.getSignedUrl(publicId),
+      };
     } catch (error) {
       console.error('Error uploading content:', error);
       throw error;
@@ -689,12 +738,20 @@ Only extract clear, readable numbers. Do not guess.`;
       }
 
       // Upload variants
-      const createdVariants: Awaited<
-        ReturnType<typeof this.prisma.variant.create>
-      >[] = [];
+      const createdVariants: Array<{
+        id: string;
+        publicId: string;
+        url: string;
+        name: string;
+        description: string | null;
+        price: any;
+        createdAt: Date;
+        updatedAt: Date;
+      }> = [];
+
       for (const variant of variants) {
         // Upload variant image to Cloudinary
-        const variantUrl = await this.cloudinary.uploadImageReturnUrl(
+        const variantPublicId = await this.cloudinary.uploadImageReturnPublicId(
           variant.file,
         );
 
@@ -702,14 +759,17 @@ Only extract clear, readable numbers. Do not guess.`;
         const createdVariant = await this.prisma.variant.create({
           data: {
             imageId: mainImage.id,
-            url: variantUrl,
+            publicId: variantPublicId,
             name: variant.name,
             description: variant.description || null,
             price: variant.price,
           },
         });
 
-        createdVariants.push(createdVariant);
+        createdVariants.push({
+          ...createdVariant,
+          url: this.cloudinary.getSignedUrl(variantPublicId),
+        });
       }
 
       return {

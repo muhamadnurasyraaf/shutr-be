@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { SearchService } from '../search/search.service';
 
 interface JinaEmbeddingResponse {
   data: Array<{
@@ -51,6 +53,8 @@ export class EventService {
   constructor(
     private prisma: PrismaService,
     private http: HttpService,
+    private cloudinary: CloudinaryService,
+    private searchService: SearchService,
   ) {}
 
   async getEvents(params: GetEventsParams) {
@@ -134,7 +138,7 @@ export class EventService {
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
-        url: true,
+        publicId: true,
         description: true,
         createdAt: true,
         creator: {
@@ -148,6 +152,15 @@ export class EventService {
       },
     });
 
+    // Transform images to include signed URLs
+    const imagesWithUrls = images.map((image) => ({
+      id: image.id,
+      url: this.cloudinary.getSignedUrl(image.publicId),
+      description: image.description,
+      createdAt: image.createdAt,
+      creator: image.creator,
+    }));
+
     return {
       event: {
         id: event.id,
@@ -159,7 +172,7 @@ export class EventService {
         creator: event.creator,
         imageCount: total,
       },
-      images,
+      images: imagesWithUrls,
       pagination: {
         page,
         limit,
@@ -211,7 +224,7 @@ export class EventService {
   async createEvent(params: CreateEventParams) {
     const { name, date, location, description, createdBy } = params;
 
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
         name,
         date,
@@ -219,14 +232,36 @@ export class EventService {
         description,
         createdBy,
       },
-      select: {
-        id: true,
-        name: true,
-        date: true,
-        location: true,
-        description: true,
+      include: {
+        creator: {
+          select: {
+            name: true,
+            displayName: true,
+          },
+        },
       },
     });
+
+    // Index in Typesense
+    await this.searchService.indexEvent({
+      id: event.id,
+      name: event.name,
+      description: event.description || undefined,
+      date: event.date.getTime(),
+      location: event.location,
+      creatorId: event.createdBy,
+      creatorName: event.creator.displayName || event.creator.name || undefined,
+      imageCount: 0,
+      createdAt: event.createdAt.getTime(),
+    });
+
+    return {
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      location: event.location,
+      description: event.description,
+    };
   }
 
   async findSimilarImages(params: FindSimilarImagesParams) {
@@ -269,7 +304,7 @@ export class EventService {
     const similarImages = await this.prisma.$queryRawUnsafe<
       Array<{
         id: string;
-        url: string;
+        publicId: string;
         description: string | null;
         createdAt: Date;
         creatorId: string;
@@ -282,7 +317,7 @@ export class EventService {
       `
       SELECT
         i.id,
-        i.url,
+        i."publicId",
         i.description,
         i."createdAt",
         i."creatorId",
@@ -302,11 +337,11 @@ export class EventService {
       limit,
     );
 
-    // Transform results to match expected format
+    // Transform results to match expected format with signed URLs
     return {
       images: similarImages.map((img) => ({
         id: img.id,
-        url: img.url,
+        url: this.cloudinary.getSignedUrl(img.publicId),
         description: img.description,
         createdAt: img.createdAt,
         similarity: img.similarity,

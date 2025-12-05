@@ -3,6 +3,7 @@ import { seedUsers } from '../src/seeds/user.seed';
 import { seedCreatorInfos } from '../src/seeds/creator.seed';
 import { seedBankingInfos } from '../src/seeds/banking.seed';
 import { seedEvents } from '../src/seeds/event.seed';
+import { seedTypesense } from '../src/seeds/typesense.seed';
 
 const prisma = new PrismaClient();
 
@@ -14,7 +15,11 @@ async function main() {
   await seedBankingInfos(prisma, users.creators);
   await seedEvents(prisma, users.creators);
 
-  console.log('✔️ Seeding completed.');
+  // Sync to Typesense
+  console.log('\n🔍 Syncing to Typesense...');
+  await seedTypesense({ clear: true });
+
+  console.log('\n✔️ Seeding completed.');
 }
 
 main()

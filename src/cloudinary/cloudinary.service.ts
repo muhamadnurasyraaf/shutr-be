@@ -154,6 +154,69 @@ export class CloudinaryService {
   }
 
   /**
+   * Get signed URL with expiration (default 1 hour)
+   */
+  getSignedUrl(
+    publicId: string,
+    expiresInSeconds = 3600,
+    options?: any,
+  ): string {
+    const timestamp = Math.floor(Date.now() / 1000) + expiresInSeconds;
+    return cloudinary.url(publicId, {
+      sign_url: true,
+      type: 'authenticated',
+      fetch_format: 'auto',
+      quality: 'auto',
+      expires_at: timestamp,
+      ...options,
+    });
+  }
+
+  /**
+   * Get signed thumbnail URL with expiration
+   */
+  getSignedThumbnail(
+    publicId: string,
+    width = 200,
+    height = 200,
+    expiresInSeconds = 3600,
+  ): string {
+    return this.getSignedUrl(publicId, expiresInSeconds, {
+      width,
+      height,
+      crop: 'fill',
+    });
+  }
+
+  /**
+   * Upload single image and return public ID directly
+   */
+  async uploadImageReturnPublicId(file: any, folder?: string): Promise<string> {
+    try {
+      const result = await this.uploadImage(file, folder);
+      return result.public_id;
+    } catch (error) {
+      console.error(error);
+      throw new BadRequestException('Failed to upload image');
+    }
+  }
+
+  /**
+   * Upload multiple images and return public IDs directly
+   */
+  async uploadMultipleImagesReturnPublicIds(
+    files: any[],
+    folder?: string,
+  ): Promise<string[]> {
+    try {
+      const results = await this.uploadMultipleImages(files, folder);
+      return results.map((result) => result.public_id);
+    } catch (error) {
+      throw new BadRequestException('Failed to upload images');
+    }
+  }
+
+  /**
    * Extract public ID from Cloudinary URL
    */
   extractPublicId(url: string): string {

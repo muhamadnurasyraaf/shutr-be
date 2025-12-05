@@ -17,7 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "typesense:sync": "ts-node src/seeds/typesense.seed.ts",
+    "typesense:sync:clear": "ts-node src/seeds/typesense.seed.ts --clear"
   },
   "dependencies": {
     "@faker-js/faker": "^10.1.0",
@@ -34,6 +36,7 @@
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.8.0",
     "google-auth-library": "^10.5.0",
+    "meilisearch": "^0.54.0",
     "multer": "^2.0.2",
     "nestjs-zod": "^5.0.1",
     "passport": "^0.7.0",
@@ -41,9 +44,9 @@
     "prisma": "^5.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "typesense": "^2.1.0",
     "zod": "^4.1.13"
   },
-  
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
@@ -73,8 +76,8 @@
     "typescript-eslint": "^8.20.0"
   },
   "prisma": {
-  "seed": "ts-node prisma/seed.ts"
-},
+    "seed": "ts-node prisma/seed.ts"
+  },
   "jest": {
     "moduleFileExtensions": [
       "js",

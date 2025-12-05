@@ -90,7 +90,8 @@ model BankingInfo {
 
 model Image {
   id          String                @id @default(uuid())
-  url         String
+  publicId    String
+  provider    String                @default("cloudinary") //easier for migrate to other provider
   description String?
   embedding   Unsupported("vector") //face embedding : current = similarity
   bibNumber   String?
@@ -113,7 +114,7 @@ model Variant {
 
   imageId         String
   image           Image            @relation(fields: [imageId], references: [id])
-  url             String?
+  publicId        String
   name            String
   description     String?
   price           Decimal          @db.Decimal(10, 2)

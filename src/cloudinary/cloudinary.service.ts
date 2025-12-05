@@ -154,20 +154,17 @@ export class CloudinaryService {
   }
 
   /**
-   * Get signed URL with expiration (default 1 hour)
+   * Get optimized URL for public images
    */
   getSignedUrl(
     publicId: string,
     expiresInSeconds = 3600,
     options?: any,
   ): string {
-    const timestamp = Math.floor(Date.now() / 1000) + expiresInSeconds;
     return cloudinary.url(publicId, {
-      sign_url: true,
-      type: 'authenticated',
       fetch_format: 'auto',
       quality: 'auto',
-      expires_at: timestamp,
+      secure: true,
       ...options,
     });
   }
@@ -186,6 +183,27 @@ export class CloudinaryService {
       height,
       crop: 'fill',
     });
+  }
+
+  /**
+   * Get signed URLs for multiple sizes at once
+   */
+  getSignedUrls(
+    publicId: string,
+    expiresInSeconds = 3600,
+  ): { thumbnail: string; standard: string; high: string } {
+    return {
+      thumbnail: this.getSignedUrl(publicId, expiresInSeconds, {
+        width: 300,
+        height: 300,
+        crop: 'fill',
+      }),
+      standard: this.getSignedUrl(publicId, expiresInSeconds, {
+        width: 1200,
+        crop: 'limit',
+      }),
+      high: this.getSignedUrl(publicId, expiresInSeconds),
+    };
   }
 
   /**

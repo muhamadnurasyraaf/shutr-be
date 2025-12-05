@@ -149,6 +149,16 @@ export class EventService {
             image: true,
           },
         },
+        variants: {
+          select: {
+            id: true,
+            publicId: true,
+            name: true,
+            description: true,
+            price: true,
+          },
+          orderBy: { price: 'asc' },
+        },
       },
     });
 
@@ -159,6 +169,13 @@ export class EventService {
       description: image.description,
       createdAt: image.createdAt,
       creator: image.creator,
+      variants: image.variants.map((variant) => ({
+        id: variant.id,
+        url: this.cloudinary.getSignedUrl(variant.publicId),
+        name: variant.name,
+        description: variant.description,
+        price: Number(variant.price),
+      })),
     }));
 
     return {

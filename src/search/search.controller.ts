@@ -30,6 +30,7 @@ export class SearchController {
   /**
    * Search events only
    * GET /search/events?q=marathon&limit=20
+   * Use q=* to list all documents
    */
   @Get('events')
   async searchEvents(
@@ -37,11 +38,13 @@ export class SearchController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
-    if (!query || query.trim() === '') {
+    // Allow * for listing all, otherwise require query
+    const searchQuery = query === '*' ? '' : query;
+    if (!query || (query.trim() === '' && query !== '*')) {
       return { hits: [], estimatedTotalHits: 0 };
     }
 
-    return this.searchService.searchEvents(query, {
+    return this.searchService.searchEvents(searchQuery || '*', {
       limit: limit ? parseInt(limit, 10) : 20,
       offset: offset ? parseInt(offset, 10) : 0,
     });
@@ -50,6 +53,7 @@ export class SearchController {
   /**
    * Search creators/photographers only
    * GET /search/creators?q=john&limit=20
+   * Use q=* to list all documents
    */
   @Get('creators')
   async searchCreators(
@@ -58,15 +62,16 @@ export class SearchController {
     @Query('offset') offset?: string,
     @Query('photographyType') photographyType?: string,
   ) {
-    if (!query || query.trim() === '') {
+    const searchQuery = query === '*' ? '' : query;
+    if (!query || (query.trim() === '' && query !== '*')) {
       return { hits: [], estimatedTotalHits: 0 };
     }
 
     const filter = photographyType
-      ? `photographyType = "${photographyType}"`
+      ? `photographyType:${photographyType}`
       : undefined;
 
-    return this.searchService.searchCreators(query, {
+    return this.searchService.searchCreators(searchQuery || '*', {
       limit: limit ? parseInt(limit, 10) : 20,
       offset: offset ? parseInt(offset, 10) : 0,
       filter,
@@ -76,6 +81,7 @@ export class SearchController {
   /**
    * Search images by bib number, plate number, or description
    * GET /search/images?q=1234&limit=20
+   * Use q=* to list all documents
    */
   @Get('images')
   async searchImages(
@@ -84,13 +90,14 @@ export class SearchController {
     @Query('offset') offset?: string,
     @Query('eventId') eventId?: string,
   ) {
-    if (!query || query.trim() === '') {
+    const searchQuery = query === '*' ? '' : query;
+    if (!query || (query.trim() === '' && query !== '*')) {
       return { hits: [], estimatedTotalHits: 0 };
     }
 
-    const filter = eventId ? `eventId = "${eventId}"` : undefined;
+    const filter = eventId ? `eventId:${eventId}` : undefined;
 
-    return this.searchService.searchImages(query, {
+    return this.searchService.searchImages(searchQuery || '*', {
       limit: limit ? parseInt(limit, 10) : 20,
       offset: offset ? parseInt(offset, 10) : 0,
       filter,

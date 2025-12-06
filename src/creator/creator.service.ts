@@ -13,15 +13,10 @@ import {
 } from './creator.dto';
 import { photographyType } from '@prisma/client';
 
-interface JinaEmbeddingResponse {
-  data: Array<{
-    embedding: number[];
-    index: number;
-  }>;
-  model: string;
-  usage: {
-    total_tokens: number;
-  };
+interface FaceEmbeddingResponse {
+  embedding: number[];
+  bbox: number[];
+  faces_detected: number;
 }
 
 interface GeminiResponse {
@@ -598,29 +593,27 @@ Only extract clear, readable numbers. Do not guess.`;
       // Extract bib/plate numbers using Gemini (use temp URL for analysis)
       const extractedNumbers = await this.extractNumbersFromImage(tempUrl);
 
-      console.log('Generating embedding...');
+      console.log('Generating face embedding...');
+
+      // Get base64 from the uploaded image for face detection API
+      const imageBase64 = await this.getBase64FromUrl(tempUrl);
 
       const response = await firstValueFrom(
-        this.http.post<JinaEmbeddingResponse>(
-          'https://api.jina.ai/v1/embeddings',
+        this.http.post<FaceEmbeddingResponse>(
+          process.env.FACE_DETECTION_API_URL ||
+            'http://localhost:8000/embedding',
           {
-            model: 'jina-clip-v2',
-            input: [
-              {
-                image: tempUrl,
-              },
-            ],
+            image_base64: imageBase64,
           },
           {
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${process.env.JINA_API_KEY}`,
             },
           },
         ),
       );
 
-      const embedding = response.data.data[0].embedding;
+      const embedding = response.data.embedding;
       const vectorStr = `[${embedding.join(',')}]`;
 
       console.log(`Generated ${embedding.length}-dimensional embedding`);

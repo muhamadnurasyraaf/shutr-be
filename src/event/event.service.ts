@@ -5,15 +5,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { SearchService } from '../search/search.service';
 
-interface JinaEmbeddingResponse {
-  data: Array<{
-    embedding: number[];
-    index: number;
-  }>;
-  model: string;
-  usage: {
-    total_tokens: number;
-  };
+interface FaceEmbeddingResponse {
+  embedding: number[];
+  bbox: number[];
+  faces_detected: number;
 }
 
 interface FindSimilarImagesParams {
@@ -293,28 +288,48 @@ export class EventService {
       throw new NotFoundException('Event not found');
     }
 
-    // Generate embedding for the uploaded image using Jina API
-    const response = await firstValueFrom(
-      this.http.post<JinaEmbeddingResponse>(
-        'https://api.jina.ai/v1/embeddings',
-        {
-          model: 'jina-clip-v2',
-          input: [
-            {
-              image: imageBase64,
-            },
-          ],
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${process.env.JINA_API_KEY}`,
-          },
-        },
-      ),
-    );
+    // Strip data URL prefix if present (e.g., "data:image/jpeg;base64,")
+    const pureBase64 = imageBase64.includes(',')
+      ? imageBase64.split(',')[1]
+      : imageBase64;
 
-    const embedding = response.data.data[0].embedding;
+    // Generate embedding for the uploaded image using Face Detection API
+    let embedding: number[];
+    try {
+      const response = await firstValueFrom(
+        this.http.post<FaceEmbeddingResponse>(
+          process.env.FACE_DETECTION_API_URL ||
+            'http://localhost:8000/embedding',
+          {
+            image_base64: pureBase64,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        ),
+      );
+      embedding = response.data.embedding;
+    } catch (error: any) {
+      // Handle face detection API errors
+      const detail = error.response?.data?.detail;
+      if (detail === 'No face detected') {
+        return {
+          images: [],
+          message:
+            'No face detected in the uploaded image. Please upload a clear photo of a face.',
+        };
+      }
+      if (detail === 'Could not decode image') {
+        return {
+          images: [],
+          message:
+            'Could not process the uploaded image. Please try a different image.',
+        };
+      }
+      throw error;
+    }
     const vectorStr = `[${embedding.join(',')}]`;
 
     // Perform vector similarity search using cosine distance
